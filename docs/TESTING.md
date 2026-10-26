@@ -8,8 +8,10 @@ The app does not enable/disable FileVault or grant secure tokens.
 ## Disposable check
 
 Run `Kerbside.app/Contents/MacOS/Kerbside --check-keychain`. A pass means only that
-this build rejected an incorrect old password and preserved a test item after
-changing a disposable file-based keychain password, including Unicode input.
+this build rejected an incorrect old password, changed a disposable file-based
+keychain password with Unicode input, then locked and reopened the keychain.
+The reopened keychain must reject the previous password, unlock with the new
+password, and preserve the test item. Unexpected acceptance fails the probe.
 If it fails, stop testing real-account password changes and report the output.
 
 ## Existing local account
@@ -18,12 +20,15 @@ If it fails, stop testing real-account password changes and report the output.
    correct Mac account. Verify keyboard navigation, secure fields, light/dark
    appearance, and the menu. Enabling/disabling launch at login must agree with
    System Settings → General → Login Items.
-2. Sign in to the AD test identity. Cancel Sync. Verify Kerberos tickets with
-   `klist`; the Mac password must remain unchanged. No new Mac or AD computer
-   account should appear.
+2. Sign in to the AD test identity. No sync dialog should appear. Verify Kerberos
+   tickets with `klist`; the Mac password must remain unchanged. Signing in again
+   without an AD password change must not introduce a pending-sync warning.
+   No new Mac or AD computer account should appear.
 3. Add a harmless saved password to the login keychain using Keychain Access.
    Sync with a deliberately different AD password. Check that the item remains
    readable. Test screen lock/unlock, then log out and log in with the AD password.
+   Read the saved item again after login; immediate access alone may use an
+   already-unlocked keychain.
 4. If this test account is FileVault-enabled, reboot and test disk unlock with
    the new password, followed by normal login and keychain access. Inspect secure
    token/volume-owner status using your normal Mac administration tools. Do not
@@ -48,13 +53,21 @@ If it fails, stop testing real-account password changes and report the output.
   AD change succeeds, a later failure must explicitly report that AD changed.
 - If keychain update fails after a local update, verify the repair action requests
   the current Mac password and previous keychain password and preserves saved
-  items. Change AD again before repair: repair must align the keychain with the
-  current Mac password and keep AD sync pending if it still differs. Never reset it.
-- Change AD elsewhere immediately before clicking Sync Password, before the next
-  background timestamp check. The saved old AD password must be rejected before
-  any local password change is attempted.
+  items. Sign out and disconnect the network before repair: it must still work
+  without reading the saved AD credential. Change AD again before repair: repair
+  must align the keychain with the current Mac password and leave pending AD sync
+  intact. Never reset it.
+- Confirm Repair Login Keychain is available even before configuring AD. Canceling
+  it or entering an incorrect current Mac password must not change the keychain.
+- Open Sync Password and leave the dialog open. Change AD elsewhere, then confirm
+  Sync before the next background timestamp check. The saved old AD password must
+  be rejected before any local password change is attempted.
 - Restart the app with sync/repair pending. It must retain that state until a
   successful repair, not clear it merely because it saw the same AD timestamp.
+- Switch the configured AD identity while repair is pending. The local repair
+  warning must remain. Repair must clear only that warning, not pending AD sync.
+- Leave a result alert open through a wake/network change. Background maintenance
+  must wait until the alert is dismissed.
 - Sign out. Verify the configured AD credential and principal's tickets are
   removed, other identities' tickets remain, and background sign-in stops.
 

@@ -18,10 +18,12 @@ through a VPN. No domain join, AD administrator, or new Mac account is required.
 2. Sign in with your AD password. Kerbside discovers controllers through macOS
    scoped DNS, obtains a Kerberos ticket, and uses it for certificate-validated LDAPS.
 3. Choose **Sync Password** to align the current Mac account and login keychain
-   with AD, or cancel and sync later. **Launch at login** is optional.
+   with AD when ready. Signing in does not open a sync dialog or change the Mac
+   password. **Launch at login** is optional.
 
 The menu shows connection, ticket, and password-expiry information, with actions
-to sign in, renew tickets, sync or change passwords, and sign out.
+to sign in, renew tickets, sync or change passwords, repair the login keychain,
+and sign out.
 
 ## Password behavior
 
@@ -37,10 +39,13 @@ pauses automatic attempts until an explicit sign-in.
 | Change the Mac password in System Settings or `passwd` | Changes the local account, not AD. Explicit sync aligns it with AD again; command-line changes may also require keychain repair. |
 | Disconnect from AD | Local login and FileVault continue using the last successfully set local password. |
 
-Sync verifies the AD credential before changing the Mac password. If the local
-update succeeds but the keychain update fails, **Repair Login Keychain** requests
-the current Mac password and previous keychain password. It preserves saved items
-and never resets the keychain. Completed AD changes are not rolled back automatically.
+After confirmation, Sync verifies the AD credential immediately before changing
+the Mac password. Partial failures identify completed and unconfirmed steps.
+**Repair Login Keychain** requests the current Mac password and previous keychain
+password. It works independently of AD, including when offline or signed out,
+and preserves saved items. Its pending state survives AD account changes.
+Repair does not clear pending AD sync. The app never resets the keychain or
+automatically rolls back completed AD changes.
 
 The AD credential is stored in the login Keychain. Settings and change timestamps
 are stored in `com.bekti.kerbside` preferences. The Mac/keychain password entered
@@ -63,7 +68,8 @@ open build/Build/Products/Release/Kerbside.app
 
 The keychain probe creates and deletes a disposable keychain; it does not change
 the account password, login keychain, or FileVault. The test suite covers account
-validation, LDIF parsing, filter escaping, and password-change state.
+validation, LDIF parsing, filter escaping, repair-state migration, and password
+update ordering and failures.
 
 ## Distribution
 

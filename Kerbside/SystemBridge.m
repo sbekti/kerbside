@@ -187,7 +187,7 @@ static void srvReply(DNSServiceRef service, DNSServiceFlags flags, uint32_t inde
     NSData *newData = [newPassword dataUsingEncoding:NSUTF8StringEncoding];
     status = change(keychain, (UInt32)oldData.length, oldData.bytes, (UInt32)newData.length, newData.bytes);
     CFRelease(keychain);
-    if (status != errSecSuccess) return fail(error, @"The login keychain password was not changed. Its previous password is still needed for repair.", status);
+    if (status != errSecSuccess) return fail(error, @"The login keychain password update could not be confirmed. Keep its previous password for repair.", status);
     return YES;
 }
 
@@ -209,6 +209,7 @@ static void srvReply(DNSServiceRef service, DNSServiceFlags flags, uint32_t inde
     NSString *oldPassword = [@"old-\u00e9-" stringByAppendingString:NSUUID.UUID.UUIDString];
     NSString *newPassword = [@"new-\u96ea-" stringByAppendingString:NSUUID.UUID.UUIDString];
     NSData *oldData = [oldPassword dataUsingEncoding:NSUTF8StringEncoding];
+    NSData *newData = [newPassword dataUsingEncoding:NSUTF8StringEncoding];
     SecKeychainRef keychain = NULL;
     OSStatus status = SecKeychainCreate(path.fileSystemRepresentation, (UInt32)oldData.length, oldData.bytes, NO, NULL, &keychain);
     BOOL ok = NO;
@@ -220,14 +221,35 @@ static void srvReply(DNSServiceRef service, DNSServiceFlags flags, uint32_t inde
         else if ([self changeKeychainAtPath:path oldPassword:@"incorrect-password" newPassword:newPassword error:&negativeError]) {
             fail(error, @"Keychain probe failed: an incorrect old password was accepted. Do not use password sync on this OS.", 6);
         } else if ([self changeKeychainAtPath:path oldPassword:oldPassword newPassword:newPassword error:error]) {
-            UInt32 length = 0; void *bytes = NULL;
-            status = SecKeychainFindGenericPassword(keychain, 8, "kerbside", 5, "probe", &length, &bytes, NULL);
-            ok = status == errSecSuccess && length == strlen(secret) && memcmp(bytes, secret, length) == 0;
-            if (bytes) SecKeychainItemFreeContent(NULL, bytes);
-            if (!ok) fail(error, @"The disposable keychain item was not preserved.", status);
+            status = SecKeychainLock(keychain);
+            CFRelease(keychain);
+            keychain = NULL;
+            if (status == errSecSuccess) status = SecKeychainOpen(path.fileSystemRepresentation, &keychain);
+            SecKeychainStatus state = 0;
+            if (status == errSecSuccess) status = SecKeychainGetStatus(keychain, &state);
+            if (status != errSecSuccess || (state & kSecUnlockStateStatus)) {
+                fail(error, @"Could not establish a locked, reopened disposable keychain.", status ?: 6);
+            } else if (SecKeychainUnlock(keychain, (UInt32)oldData.length, oldData.bytes, YES) != errSecAuthFailed) {
+                // Unlock behavior differs across macOS versions. A success here is
+                // not evidence of compatibility: this negative control must fail.
+                fail(error, @"The reopened disposable keychain did not reject its previous password. Password compatibility could not be verified.", 6);
+            } else {
+                status = SecKeychainUnlock(keychain, (UInt32)newData.length, newData.bytes, YES);
+                if (status != errSecSuccess) {
+                    fail(error, @"Could not unlock the disposable keychain with its new password.", status);
+                } else {
+                    UInt32 length = 0; void *bytes = NULL;
+                    status = SecKeychainFindGenericPassword(keychain, 8, "kerbside", 5, "probe", &length, &bytes, NULL);
+                    ok = status == errSecSuccess && length == strlen(secret) && memcmp(bytes, secret, length) == 0;
+                    if (bytes) SecKeychainItemFreeContent(NULL, bytes);
+                    if (!ok) fail(error, @"The disposable keychain item was not preserved after reopening.", status ?: 6);
+                }
+            }
         }
-        SecKeychainDelete(keychain);
-        CFRelease(keychain);
+        if (keychain) {
+            SecKeychainDelete(keychain);
+            CFRelease(keychain);
+        }
     } else fail(error, @"Could not create a disposable keychain.", status);
     [NSFileManager.defaultManager removeItemAtPath:folder error:nil];
     return ok;

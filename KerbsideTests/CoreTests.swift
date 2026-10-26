@@ -60,12 +60,8 @@ final class CoreTests: XCTestCase {
         state = try JSONDecoder().decode(PasswordState.self, from: JSONEncoder().encode(state))
         XCTAssertFalse(state.observe("200"))
         XCTAssertTrue(state.needsSync)
-        state.needsKeychainRepair = true
-        XCTAssertFalse(state.observe("200"))
-        XCTAssertTrue(state.needsKeychainRepair)
         state.didSync()
         XCTAssertFalse(state.needsSync)
-        XCTAssertFalse(state.needsKeychainRepair)
     }
 
     func testLaggingControllerDoesNotRepeatAChangeButMustChangeIsDetected() {
@@ -78,5 +74,92 @@ final class CoreTests: XCTestCase {
         XCTAssertFalse(state.needsSync)
         XCTAssertTrue(state.observe("0"))
         XCTAssertTrue(state.needsSync)
+    }
+
+    func testRepairMigrationSurvivesADAccountChangesAndSignOut() throws {
+        let suite = "kerbside-tests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(Data(#"{"observed":"100","needsSync":true,"needsKeychainRepair":true}"#.utf8), forKey: "passwordState")
+        KeychainRepairState.migrate(in: defaults)
+        XCTAssertTrue(defaults.bool(forKey: KeychainRepairState.key))
+
+        // Switching AD identities replaces directory state, not local repair state.
+        defaults.set(try JSONEncoder().encode(PasswordState()), forKey: "passwordState")
+        defaults.set(true, forKey: "signedOut")
+        let reopened = try XCTUnwrap(UserDefaults(suiteName: suite))
+        KeychainRepairState.migrate(in: reopened)
+        XCTAssertTrue(reopened.bool(forKey: KeychainRepairState.key))
+    }
+
+    func testRepairDoesNotClearPendingADSyncOrReimportTheLegacyFlag() throws {
+        let suite = "kerbside-tests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(Data(#"{"observed":"100","needsSync":true,"needsKeychainRepair":true}"#.utf8), forKey: "passwordState")
+        KeychainRepairState.migrate(in: defaults)
+        defaults.set(false, forKey: KeychainRepairState.key)
+        KeychainRepairState.migrate(in: defaults)
+        XCTAssertFalse(defaults.bool(forKey: KeychainRepairState.key))
+        let state = try JSONDecoder().decode(PasswordState.self, from: XCTUnwrap(defaults.data(forKey: "passwordState")))
+        XCTAssertTrue(state.needsSync)
+        XCTAssertEqual(state.observed, "100")
+    }
+
+    func testFreshPreferencesDoNotRequireRepair() throws {
+        let suite = "kerbside-tests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        KeychainRepairState.migrate(in: defaults)
+        XCTAssertEqual(defaults.object(forKey: KeychainRepairState.key) as? Bool, false)
+    }
+
+    func testPasswordUpdateAuthorizesAfterPreflightAndBeforeWrites() throws {
+        var steps: [String] = []
+        try PasswordUpdate.run(preflight: { steps.append("preflight") },
+                               authorize: { steps.append("authorize") },
+                               updateAccount: { steps.append("account") },
+                               updateKeychain: { steps.append("keychain") })
+        XCTAssertEqual(steps, ["preflight", "authorize", "account", "keychain"])
+    }
+
+    func testRejectedPreflightOrAuthorizationPreventsAllPasswordWrites() {
+        for failedStep in ["preflight", "authorize"] {
+            var writes = 0
+            let failure = KerbsideError("Rejected \(failedStep)")
+            XCTAssertThrowsError(try PasswordUpdate.run(preflight: {
+                if failedStep == "preflight" { throw failure }
+            }, authorize: {
+                if failedStep == "authorize" { throw failure }
+            }, updateAccount: { writes += 1 }, updateKeychain: { writes += 1 })) { error in
+                XCTAssertFalse(error is PasswordUpdateFailure)
+                XCTAssertEqual(error.localizedDescription, failure.localizedDescription)
+            }
+            XCTAssertEqual(writes, 0)
+        }
+    }
+
+    func testAccountFailureDoesNotAttemptKeychainUpdate() {
+        var keychainWrites = 0
+        XCTAssertThrowsError(try PasswordUpdate.run(preflight: {}, authorize: {}, updateAccount: {
+            throw KerbsideError("Account error")
+        }, updateKeychain: { keychainWrites += 1 })) { error in
+            guard case PasswordUpdateFailure.account = error else { return XCTFail("Expected account-stage failure") }
+            XCTAssertTrue(error.localizedDescription.contains("could not be confirmed"))
+            XCTAssertTrue(error.localizedDescription.contains("keychain update was not attempted"))
+        }
+        XCTAssertEqual(keychainWrites, 0)
+    }
+
+    func testKeychainFailureReportsCompletedAccountUpdate() {
+        var accountUpdated = false
+        XCTAssertThrowsError(try PasswordUpdate.run(preflight: {}, authorize: {}, updateAccount: {
+            accountUpdated = true
+        }, updateKeychain: { throw KerbsideError("Keychain error") })) { error in
+            guard case PasswordUpdateFailure.keychain = error else { return XCTFail("Expected keychain-stage failure") }
+            XCTAssertTrue(error.localizedDescription.contains("Mac account password matches"))
+            XCTAssertTrue(error.localizedDescription.contains("keychain update could not be confirmed"))
+        }
+        XCTAssertTrue(accountUpdated)
     }
 }

@@ -101,36 +101,23 @@ enum Directory {
     }
 }
 
-struct KeychainRepairNeeded: LocalizedError {
-    let underlying: Error
-    var errorDescription: String? {
-        "Your Mac account password now matches AD, but the login keychain did not update. " +
-        "Keep its previous password and choose Sync Password to repair it. " + underlying.localizedDescription
-    }
-}
-
 enum LocalAccount {
     private static func record() throws -> ODRecord {
         let node = try ODNode(session: ODSession.default(), type: ODNodeType(kODNodeTypeLocalNodes))
         return try node.record(withRecordType: kODRecordTypeUsers, name: NSUserName(), attributes: nil)
     }
 
-    static func preflight(newPassword: String, currentPassword: String) throws {
-        try SystemBridge.checkLoginKeychain()
+    static func sync(newPassword: String, currentPassword: String, authorize: () throws -> Void) throws {
         let user = try record()
-        try user.verifyPassword(currentPassword)
-        try user.passwordChangeAllowed(newPassword)
-    }
-
-    static func sync(newPassword: String, currentPassword: String) throws {
-        try SystemBridge.checkLoginKeychain()
-        let user = try record()
-        try user.verifyPassword(currentPassword)
-        try user.passwordChangeAllowed(newPassword)
-        if currentPassword != newPassword { try user.changePassword(currentPassword, toPassword: newPassword) }
-        do {
+        try PasswordUpdate.run(preflight: {
+            try SystemBridge.checkLoginKeychain()
+            try user.verifyPassword(currentPassword)
+            try user.passwordChangeAllowed(newPassword)
+        }, authorize: authorize, updateAccount: {
+            if currentPassword != newPassword { try user.changePassword(currentPassword, toPassword: newPassword) }
+        }, updateKeychain: {
             try SystemBridge.changeKeychain(path: nil, oldPassword: currentPassword, newPassword: newPassword)
-        } catch { throw KeychainRepairNeeded(underlying: error) }
+        })
     }
 
     static func repairKeychain(currentMacPassword: String, previousKeychainPassword: String) throws {

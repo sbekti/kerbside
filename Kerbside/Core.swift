@@ -108,7 +108,6 @@ enum LDIF {
 struct PasswordState: Codable, Equatable {
     var observed: String?
     var needsSync = false
-    var needsKeychainRepair = false
 
     mutating func observe(_ timestamp: String) -> Bool {
         // A lagging RODC must not move the baseline backward and repeatedly
@@ -123,6 +122,46 @@ struct PasswordState: Codable, Equatable {
 
     mutating func didSync() {
         needsSync = false
-        needsKeychainRepair = false
+    }
+}
+
+enum KeychainRepairState {
+    static let key = "needsKeychainRepair"
+
+    static func migrate(in defaults: UserDefaults) {
+        guard defaults.object(forKey: key) == nil else { return }
+        struct LegacyState: Decodable { let needsKeychainRepair: Bool? }
+        let legacy = defaults.data(forKey: "passwordState").flatMap {
+            try? JSONDecoder().decode(LegacyState.self, from: $0)
+        }
+        // Record false too, so an old flag cannot reappear after a successful repair.
+        defaults.set(legacy?.needsKeychainRepair ?? false, forKey: key)
+    }
+}
+
+enum PasswordUpdateFailure: LocalizedError {
+    case account(Error)
+    case keychain(Error)
+
+    var errorDescription: String? {
+        switch self {
+        case .account(let error):
+            return "The Mac password update could not be confirmed. The login keychain update was not attempted. " +
+                "Keep both passwords. " + error.localizedDescription
+        case .keychain(let error):
+            return "The Mac account password matches the requested password, but the login keychain update could not be confirmed. " +
+                "Keep its previous password and choose Repair Login Keychain. " + error.localizedDescription
+        }
+    }
+}
+
+enum PasswordUpdate {
+    // Authorization happens after user confirmation and preflight, immediately before writes.
+    static func run(preflight: () throws -> Void, authorize: () throws -> Void,
+                    updateAccount: () throws -> Void, updateKeychain: () throws -> Void) throws {
+        try preflight()
+        try authorize()
+        do { try updateAccount() } catch { throw PasswordUpdateFailure.account(error) }
+        do { try updateKeychain() } catch { throw PasswordUpdateFailure.keychain(error) }
     }
 }

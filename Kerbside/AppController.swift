@@ -11,8 +11,10 @@ private struct SignInNeeded: LocalizedError {
 private struct RemotePasswordChanged: LocalizedError {
     let cause: Error
     var errorDescription: String? {
-        "Your AD password changed. Use the new AD password from now on. " +
-        "The remaining update did not complete: " + cause.localizedDescription
+        let localStatus = cause is PasswordUpdateFailure ? "" :
+            "The Mac account and login keychain updates were not attempted. "
+        return "Your AD password changed. Use the new AD password from now on. " +
+            localStatus + cause.localizedDescription
     }
 }
 
@@ -31,8 +33,13 @@ final class AppController: NSObject, NSApplicationDelegate {
     private var status = "Not configured"
     private var ticketExpiry: Date?
     private var directoryInfo: DirectoryInfo?
+    private var needsKeychainRepair: Bool {
+        get { defaults.bool(forKey: KeychainRepairState.key) }
+        set { defaults.set(newValue, forKey: KeychainRepairState.key) }
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        KeychainRepairState.migrate(in: defaults)
         if let data = defaults.data(forKey: "account"), let saved = try? JSONDecoder().decode(Account.self, from: data) {
             account = try? Account(domain: saved.domain, username: saved.username)
         }
@@ -98,13 +105,14 @@ final class AppController: NSObject, NSApplicationDelegate {
                 add("Password expires \(DateFormatter.localizedString(from: expiry, dateStyle: .medium, timeStyle: .none))")
             }
         }
-        if passwordState.needsKeychainRepair { add("Login keychain needs repair") }
+        if needsKeychainRepair { add("Login keychain needs attention") }
         else if passwordState.needsSync { add("Password sync needed") }
         menu.addItem(.separator())
         let validTicket = ticketExpiry.map { $0 > Date() } ?? false
         add(validTicket && !authPaused ? "Renew Tickets" : "Sign In…", #selector(signInOrRenew), enabled: account != nil)
-        add(passwordState.needsKeychainRepair ? "Repair Login Keychain…" : "Sync Password…", #selector(syncPassword), enabled: account != nil && !signedOut)
-        add("Change Password…", #selector(changePassword), enabled: account != nil && !passwordState.needsKeychainRepair)
+        add("Sync Password…", #selector(syncPassword), enabled: account != nil && !signedOut && !needsKeychainRepair)
+        add("Change Password…", #selector(changePassword), enabled: account != nil && !needsKeychainRepair)
+        add("Repair Login Keychain…", #selector(repairKeychain))
         add("Sign Out", #selector(signOut), enabled: account != nil && !signedOut)
         menu.addItem(.separator())
         add("Settings…", #selector(settings))
@@ -119,17 +127,19 @@ final class AppController: NSObject, NSApplicationDelegate {
     }
 
     // One serial work queue keeps authentication, directory reads, and changes from overlapping.
-    private func run<Value>(_ work: @escaping () throws -> Value, completion: @escaping (Result<Value, Error>) -> Void) {
+    private func run<Value>(_ work: @escaping () throws -> Value,
+                            completion: @escaping (Result<Value, Error>) -> (title: String, message: String)?) {
         guard !busy else { return }
         busy = true
         refreshMenu()
         queue.async {
             let result = Result { try work() }
             DispatchQueue.main.async {
-                self.busy = false
-                completion(result)
+                let notice = completion(result)
                 self.persist()
+                self.busy = false
                 self.refreshMenu()
+                if let notice { self.alert(notice.title, notice.message) }
             }
         }
     }
@@ -180,6 +190,7 @@ final class AppController: NSObject, NSApplicationDelegate {
                     self.status = "Sign in needed"
                 } else { self.status = "AD unavailable or check failed" }
             }
+            return nil
         })
     }
 
@@ -199,8 +210,9 @@ final class AppController: NSObject, NSApplicationDelegate {
                     self.status = "Connected"
                 case .failure(let error):
                     self.authPaused = true
-                    self.alert("Could not renew tickets", error.localizedDescription)
+                    return ("Could not renew tickets", error.localizedDescription)
                 }
+                return nil
             })
         } else { signIn() }
     }
@@ -222,73 +234,63 @@ final class AppController: NSObject, NSApplicationDelegate {
                 self.directoryInfo = info
                 _ = self.passwordState.observe(info.passwordChanged)
                 self.authPaused = false
-                self.passwordState.needsSync = true
                 self.ticketExpiry = SystemBridge.ticketExpiry(forPrincipal: account.principal)
                 self.status = "Connected"
-                self.persist()
                 self.requestNotifications()
-                self.offerSync(password: password)
+                return nil
             case .failure(let error):
                 self.authPaused = true
                 self.status = "Sign in incomplete"
-                self.alert("Could not finish sign-in", error.localizedDescription)
+                return ("Could not finish sign-in", error.localizedDescription)
             }
         })
     }
 
     @objc private func syncPassword() {
-        guard let account else { return }
-        do {
-            guard !authPaused, let password = try CredentialStore.password(for: account) else { signIn(); return }
-            // A saved credential alone is not proof that it is still AD's current
-            // password. Reauthenticate before offering a local password change.
-            run({
-                _ = try Directory.controller(for: account)
-                try SystemBridge.authenticate(principal: account.principal, password: password)
-            }, completion: { result in
-                switch result {
-                case .success: self.offerSync(password: password)
-                case .failure(let error):
-                    self.authPaused = true
-                    self.alert("Could not verify the AD password", error.localizedDescription + " Sign in again before syncing.")
-                }
-            })
-        } catch { alert("Sign in needed", error.localizedDescription); signIn() }
-    }
-
-    private func offerSync(password: String) {
-        if passwordState.needsKeychainRepair {
-            guard let values = form("Repair Login Keychain", message:
-                "Update the login keychain to match your current Mac password while preserving its saved items.",
-                fields: [("Current Mac password", true, ""), ("Previous login keychain password", true, "")], button: "Repair") else { return }
-            run({ try LocalAccount.repairKeychain(currentMacPassword: values[0], previousKeychainPassword: values[1]) }, completion: { result in
-                switch result {
-                case .success:
-                    self.passwordState.needsKeychainRepair = false
-                    if values[0] == password {
-                        self.passwordState.didSync()
-                        self.alert("Keychain repaired", "Your Mac password and login keychain match the verified AD password.")
-                    } else {
-                        self.passwordState.needsSync = true
-                        self.alert("Keychain repaired", "The login keychain now matches your Mac password. Choose Sync Password to align both with the current AD password.")
-                    }
-                case .failure(let error): self.alert("Keychain repair incomplete", error.localizedDescription)
-                }
-            })
-            return
-        }
+        guard let account, !needsKeychainRepair else { return }
+        guard !signedOut, !authPaused else { signIn(); return }
         guard let values = form("Sync Mac Password", message:
             "Update the local account \(NSUserName()) and login keychain to match your AD password. Saved keychain items will be preserved.",
             fields: [("Current Mac password", true, "")], button: "Sync") else { return }
-        run({ try LocalAccount.sync(newPassword: password, currentPassword: values[0]) }, completion: { result in
+        run({
+            let password: String
+            do {
+                guard let saved = try CredentialStore.password(for: account) else {
+                    throw SignInNeeded(message: "Sign in again before syncing.")
+                }
+                password = saved
+            } catch { throw SignInNeeded(message: error.localizedDescription) }
+            try LocalAccount.sync(newPassword: password, currentPassword: values[0], authorize: {
+                _ = try Directory.controller(for: account)
+                do { try SystemBridge.authenticate(principal: account.principal, password: password) }
+                catch { throw SignInNeeded(message: error.localizedDescription + " Sign in again before syncing.") }
+            })
+        }, completion: { result in
             switch result {
             case .success:
                 self.passwordState.didSync()
-                self.alert("Password sync complete", "Your Mac account and login keychain now match AD. Verify FileVault at the next reboot before relying on the new password.")
+                self.ticketExpiry = SystemBridge.ticketExpiry(forPrincipal: account.principal)
+                return ("Password sync complete", "Your Mac account and login keychain now match AD. Verify FileVault at the next reboot before relying on the new password.")
             case .failure(let error):
                 self.passwordState.needsSync = true
-                if error is KeychainRepairNeeded { self.passwordState.needsKeychainRepair = true }
-                self.alert("Password sync incomplete", error.localizedDescription)
+                if case PasswordUpdateFailure.keychain = error { self.needsKeychainRepair = true }
+                if error is SignInNeeded { self.authPaused = true; self.status = "Sign in needed" }
+                return ("Password sync incomplete", error.localizedDescription)
+            }
+        })
+    }
+
+    @objc private func repairKeychain() {
+        guard let values = form("Repair Login Keychain", message:
+            "Update the login keychain to match your current Mac password while preserving its saved items.",
+            fields: [("Current Mac password", true, ""), ("Previous login keychain password", true, "")], button: "Repair") else { return }
+        run({ try LocalAccount.repairKeychain(currentMacPassword: values[0], previousKeychainPassword: values[1]) }, completion: { result in
+            switch result {
+            case .success:
+                self.needsKeychainRepair = false
+                return ("Keychain repaired", "Your login keychain now matches your Mac password.")
+            case .failure(let error):
+                return ("Keychain repair incomplete", error.localizedDescription)
             }
         })
     }
@@ -301,12 +303,17 @@ final class AppController: NSObject, NSApplicationDelegate {
         guard !values[1].isEmpty, values[1] == values[2] else { alert("Passwords do not match", "Enter the same nonempty new password twice."); return }
         run({ () -> DirectoryInfo? in
             let controller = try Directory.controller(for: account)
-            try LocalAccount.preflight(newPassword: values[1], currentPassword: values[3])
-            try SystemBridge.changePassword(principal: account.principal, oldPassword: values[0], newPassword: values[1])
+            var changedAD = false
             do {
-                try CredentialStore.save(values[1], for: account)
-                try LocalAccount.sync(newPassword: values[1], currentPassword: values[3])
-            } catch { throw RemotePasswordChanged(cause: error) }
+                try LocalAccount.sync(newPassword: values[1], currentPassword: values[3], authorize: {
+                    try SystemBridge.changePassword(principal: account.principal, oldPassword: values[0], newPassword: values[1])
+                    changedAD = true
+                    try CredentialStore.save(values[1], for: account)
+                })
+            } catch {
+                if changedAD { throw RemotePasswordChanged(cause: error) }
+                throw error
+            }
             // A completed password change must not be reported as failed merely
             // because replication or a subsequent ticket refresh is delayed.
             try? SystemBridge.authenticate(principal: account.principal, password: values[1])
@@ -323,15 +330,15 @@ final class AppController: NSObject, NSApplicationDelegate {
                 self.signedOut = false
                 self.ticketExpiry = SystemBridge.ticketExpiry(forPrincipal: account.principal)
                 self.status = "Password changed"
-                self.alert("Password changed", "AD, your local account, and the login keychain were updated. Use the new password. Verify FileVault at the next reboot.")
+                return ("Password changed", "AD, your local account, and the login keychain were updated. Use the new password. Verify FileVault at the next reboot.")
             case .failure(let error):
                 if let partial = error as? RemotePasswordChanged {
                     self.passwordState.needsSync = true
-                    self.passwordState.needsKeychainRepair = partial.cause is KeychainRepairNeeded
+                    if case PasswordUpdateFailure.keychain = partial.cause { self.needsKeychainRepair = true }
                     self.signedOut = false
                     self.authPaused = true
                 }
-                self.alert("Password change incomplete", error.localizedDescription)
+                return ("Password change incomplete", error.localizedDescription)
             }
         })
     }
@@ -349,8 +356,9 @@ final class AppController: NSObject, NSApplicationDelegate {
                 self.ticketExpiry = nil
                 self.directoryInfo = nil
                 self.status = "Signed out"
-            case .failure(let error): self.alert("Sign-out incomplete", error.localizedDescription)
+            case .failure(let error): return ("Sign-out incomplete", error.localizedDescription)
             }
+            return nil
         })
     }
 
@@ -409,6 +417,9 @@ final class AppController: NSObject, NSApplicationDelegate {
     }
 
     private func alert(_ title: String, _ message: String) {
+        guard !presentingDialog else { return }
+        presentingDialog = true
+        defer { presentingDialog = false }
         let alert = NSAlert()
         alert.messageText = title
         alert.informativeText = message
@@ -417,6 +428,9 @@ final class AppController: NSObject, NSApplicationDelegate {
     }
 
     private func confirm(_ title: String, _ message: String) -> Bool {
+        guard !presentingDialog else { return false }
+        presentingDialog = true
+        defer { presentingDialog = false }
         let alert = NSAlert()
         alert.messageText = title
         alert.informativeText = message
