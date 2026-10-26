@@ -1,0 +1,47 @@
+// !$*UTF8*$!
+{archiveVersion = 1; classes = {}; objectVersion = 56; objects = {
+8BDC092F0F7B5458BAA47668 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "main.swift"; sourceTree = "<group>";};
+CE72EA1DCC58C903900FD5A8 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Core.swift"; sourceTree = "<group>";};
+0E95EB52A8C91D0458515DE9 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Services.swift"; sourceTree = "<group>";};
+65F669EE5D4990D81DA6F085 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppController.swift"; sourceTree = "<group>";};
+C15647D25A1F94970E7DA1EA = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = "SystemBridge.m"; sourceTree = "<group>";};
+259EFBE8F53FCCB6B5E4FC93 = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "Bridge.h"; sourceTree = "<group>";};
+A1AF82B1930EC6F27919A38D = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "SystemBridge.h"; sourceTree = "<group>";};
+9AC3B5AD93CBC0305C62F78F = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "Info.plist"; sourceTree = "<group>";};
+23BB2EA1E7245D01229B8491 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreTests.swift; sourceTree = "<group>";};
+763D774377779C412BB71F6F = {isa = PBXFileReference; explicitFileType = wrapper.application; path = Kerbside.app; sourceTree = BUILT_PRODUCTS_DIR;};
+00444E2C37DD529B70E931A2 = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; path = KerbsideTests.xctest; sourceTree = BUILT_PRODUCTS_DIR;};
+C693279643B8CD5D248172D9 = {isa = PBXFileReference; lastKnownFileType = text; path = "LICENSE"; sourceTree = SOURCE_ROOT;};
+D448B8E7FEFE6C0BFADADC15 = {isa = PBXFileReference; lastKnownFileType = text; path = "THIRD_PARTY_NOTICES.md"; sourceTree = SOURCE_ROOT;};
+5652941471EEF5B25819CDC3 = {isa = PBXGroup; children = (8BDC092F0F7B5458BAA47668,CE72EA1DCC58C903900FD5A8,0E95EB52A8C91D0458515DE9,65F669EE5D4990D81DA6F085,C15647D25A1F94970E7DA1EA,259EFBE8F53FCCB6B5E4FC93,A1AF82B1930EC6F27919A38D,9AC3B5AD93CBC0305C62F78F); sourceTree = "<group>";path = "Kerbside";};
+48BA5869060C40ADB5964A48 = {isa = PBXGroup; children = (23BB2EA1E7245D01229B8491); sourceTree = "<group>";path = "KerbsideTests";};
+0A3E27B8CA818264D75C8D81 = {isa = PBXGroup; children = (763D774377779C412BB71F6F,00444E2C37DD529B70E931A2); sourceTree = "<group>";};
+0035FE99EA2940F7FA633A58 = {isa = PBXGroup; children = (5652941471EEF5B25819CDC3,48BA5869060C40ADB5964A48,0A3E27B8CA818264D75C8D81,C693279643B8CD5D248172D9,D448B8E7FEFE6C0BFADADC15); sourceTree = "<group>";};
+73EBF6644258C120893E685D = {isa = XCBuildConfiguration; name = Debug; buildSettings = {SDKROOT = macosx;MACOSX_DEPLOYMENT_TARGET = 27.0;ARCHS = arm64;SWIFT_VERSION = 5.0;CLANG_ENABLE_MODULES = YES;CLANG_ENABLE_OBJC_ARC = YES;CODE_SIGN_STYLE = Manual;CODE_SIGN_IDENTITY = "-";ENABLE_HARDENED_RUNTIME = YES;GCC_WARN_UNUSED_VARIABLE = YES;SWIFT_STRICT_CONCURRENCY = minimal;SWIFT_OPTIMIZATION_LEVEL = "-Onone";};};
+0B0C687DF8B6B8DC790B519C = {isa = XCBuildConfiguration; name = Release; buildSettings = {SDKROOT = macosx;MACOSX_DEPLOYMENT_TARGET = 27.0;ARCHS = arm64;SWIFT_VERSION = 5.0;CLANG_ENABLE_MODULES = YES;CLANG_ENABLE_OBJC_ARC = YES;CODE_SIGN_STYLE = Manual;CODE_SIGN_IDENTITY = "-";ENABLE_HARDENED_RUNTIME = YES;GCC_WARN_UNUSED_VARIABLE = YES;SWIFT_STRICT_CONCURRENCY = minimal;SWIFT_OPTIMIZATION_LEVEL = "-O";};};
+AAB2723FF2C8E6D1C298C1E4 = {isa = XCConfigurationList; buildConfigurations = (73EBF6644258C120893E685D,0B0C687DF8B6B8DC790B519C); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release;};
+B00CCDD09424E369308D67FA = {isa = XCBuildConfiguration; name = Debug; buildSettings = {PRODUCT_BUNDLE_IDENTIFIER = com.bekti.kerbside;PRODUCT_NAME = Kerbside;INFOPLIST_FILE = Kerbside/Info.plist;MARKETING_VERSION = 0.1.0;CURRENT_PROJECT_VERSION = 1;SWIFT_OBJC_BRIDGING_HEADER = Kerbside/Bridge.h;OTHER_LDFLAGS = ("-framework","AppKit","-framework","GSS","-framework","Kerberos","-framework","OpenDirectory","-framework","Security","-framework","SystemConfiguration","-framework","Network","-framework","ServiceManagement","-framework","UserNotifications","-framework","LocalAuthentication");SWIFT_OPTIMIZATION_LEVEL = "-Onone";};};
+1B104479E55E37CF8A63CBDF = {isa = XCBuildConfiguration; name = Release; buildSettings = {PRODUCT_BUNDLE_IDENTIFIER = com.bekti.kerbside;PRODUCT_NAME = Kerbside;INFOPLIST_FILE = Kerbside/Info.plist;MARKETING_VERSION = 0.1.0;CURRENT_PROJECT_VERSION = 1;SWIFT_OBJC_BRIDGING_HEADER = Kerbside/Bridge.h;OTHER_LDFLAGS = ("-framework","AppKit","-framework","GSS","-framework","Kerberos","-framework","OpenDirectory","-framework","Security","-framework","SystemConfiguration","-framework","Network","-framework","ServiceManagement","-framework","UserNotifications","-framework","LocalAuthentication");SWIFT_OPTIMIZATION_LEVEL = "-O";};};
+952F4DF8105729797025EDD4 = {isa = XCConfigurationList; buildConfigurations = (B00CCDD09424E369308D67FA,1B104479E55E37CF8A63CBDF); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release;};
+DD3F495F7D6A5AA1C1769021 = {isa = XCBuildConfiguration; name = Debug; buildSettings = {PRODUCT_BUNDLE_IDENTIFIER = com.bekti.kerbside.tests;PRODUCT_NAME = KerbsideTests;GENERATE_INFOPLIST_FILE = YES;ENABLE_TESTING_SEARCH_PATHS = YES;OTHER_LDFLAGS = ("-framework", XCTest);SWIFT_OPTIMIZATION_LEVEL = "-Onone";};};
+E670BC2FFE794172EBC92AE3 = {isa = XCBuildConfiguration; name = Release; buildSettings = {PRODUCT_BUNDLE_IDENTIFIER = com.bekti.kerbside.tests;PRODUCT_NAME = KerbsideTests;GENERATE_INFOPLIST_FILE = YES;ENABLE_TESTING_SEARCH_PATHS = YES;OTHER_LDFLAGS = ("-framework", XCTest);SWIFT_OPTIMIZATION_LEVEL = "-O";};};
+A314C661E13AE4B085126114 = {isa = XCConfigurationList; buildConfigurations = (DD3F495F7D6A5AA1C1769021,E670BC2FFE794172EBC92AE3); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release;};
+62A575A091623424A238989D = {isa = PBXBuildFile; fileRef = 8BDC092F0F7B5458BAA47668;};
+01B714A2C6735936E63F6CFE = {isa = PBXBuildFile; fileRef = CE72EA1DCC58C903900FD5A8;};
+D40CE4521AB072D7A224DE95 = {isa = PBXBuildFile; fileRef = 0E95EB52A8C91D0458515DE9;};
+6E27FCEB904DCB2798328A79 = {isa = PBXBuildFile; fileRef = 65F669EE5D4990D81DA6F085;};
+52F423A5197F77A91AD8EFB6 = {isa = PBXBuildFile; fileRef = C15647D25A1F94970E7DA1EA;};
+D263BB26C4C21E50495B0C88 = {isa = PBXBuildFile; fileRef = C693279643B8CD5D248172D9;};
+BE9A88629759CEFD98F21319 = {isa = PBXBuildFile; fileRef = D448B8E7FEFE6C0BFADADC15;};
+6BAB02B549A96CC50D0CA977 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (62A575A091623424A238989D,01B714A2C6735936E63F6CFE,D40CE4521AB072D7A224DE95,6E27FCEB904DCB2798328A79,52F423A5197F77A91AD8EFB6); runOnlyForDeploymentPostprocessing = 0;};
+093A8EEF16CCA81BE763994D = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0;};
+DAB7151652C25D9B83C5FD83 = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (D263BB26C4C21E50495B0C88,BE9A88629759CEFD98F21319); runOnlyForDeploymentPostprocessing = 0;};
+AC44A5EE06496B21A17CA082 = {isa = PBXNativeTarget; name = Kerbside; productName = Kerbside; productType = "com.apple.product-type.application"; productReference = 763D774377779C412BB71F6F; buildConfigurationList = 952F4DF8105729797025EDD4; buildPhases = (6BAB02B549A96CC50D0CA977,093A8EEF16CCA81BE763994D,DAB7151652C25D9B83C5FD83); buildRules = (); dependencies = ();};
+96C3815136278222CFF64B61 = {isa = PBXBuildFile; fileRef = CE72EA1DCC58C903900FD5A8;};
+6D823DE5FE0BE1F2075107E6 = {isa = PBXBuildFile; fileRef = 23BB2EA1E7245D01229B8491;};
+798B65A4B63A4D08FDD4C755 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (96C3815136278222CFF64B61,6D823DE5FE0BE1F2075107E6); runOnlyForDeploymentPostprocessing = 0;};
+497639E2F38DB3F946CE62A2 = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0;};
+14F0309E5479D955E2A2D11E = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0;};
+3A0C9CEF9D8F3BC090274361 = {isa = PBXNativeTarget; name = KerbsideTests; productName = KerbsideTests; productType = "com.apple.product-type.bundle.unit-test"; productReference = 00444E2C37DD529B70E931A2; buildConfigurationList = A314C661E13AE4B085126114; buildPhases = (798B65A4B63A4D08FDD4C755,497639E2F38DB3F946CE62A2,14F0309E5479D955E2A2D11E); buildRules = (); dependencies = ();};
+244210E48437B6556980A702 = {isa = PBXProject; attributes = {LastUpgradeCheck = 2700;}; buildConfigurationList = AAB2723FF2C8E6D1C298C1E4; compatibilityVersion = "Xcode 14.0"; developmentRegion = en; knownRegions = (en,Base); mainGroup = 0035FE99EA2940F7FA633A58; productRefGroup = 0A3E27B8CA818264D75C8D81; projectDirPath = ""; projectRoot = ""; targets = (AC44A5EE06496B21A17CA082,3A0C9CEF9D8F3BC090274361);};
+}; rootObject = 244210E48437B6556980A702;}

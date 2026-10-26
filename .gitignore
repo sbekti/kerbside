@@ -1,0 +1,13 @@
+.DS_Store
+build/
+*.xcuserstate
+xcuserdata/
+__pycache__/
+.env
+.env.*
+*.pem
+*.key
+*.p8
+*.p12
+*.keychain*
+*.sops.*

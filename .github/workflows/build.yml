@@ -1,0 +1,101 @@
+name: Build Kerbside
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kerbside-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+jobs:
+  build:
+    runs-on: xcode-27
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build and test
+        run: xcodebuild -project Kerbside.xcodeproj -scheme Kerbside -derivedDataPath build -destination 'platform=macOS,arch=arm64' test
+      - name: Package the app
+        shell: bash
+        run: |
+          version=0.1.0-preview.${{ github.run_number }}
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then version="${GITHUB_REF#refs/tags/v}"; fi
+          bash scripts/build.sh "$version"
+          python3 scripts/cask.py "$version" build/dist/*.zip > build/kerbside.rb
+          ruby -c build/kerbside.rb
+      - name: Test the packaged app's disposable keychain compatibility
+        run: build/Build/Products/Release/Kerbside.app/Contents/MacOS/Kerbside --check-keychain
+      - name: Check the first-run interface without AD credentials
+        shell: bash
+        run: |
+          open build/Build/Products/Release/Kerbside.app
+          sleep 3
+          pgrep -x Kerbside
+          screencapture -x build/first-run.png
+          pkill -x Kerbside
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Kerbside-arm64
+          path: build/dist/*.zip
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Kerbside-first-run
+          path: build/first-run.png
+          if-no-files-found: ignore
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    environment: release
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v4
+        with:
+          name: Kerbside-arm64
+          path: build/dist
+      - name: Publish a draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" build/dist/*.zip --draft --generate-notes --title "Kerbside ${GITHUB_REF_NAME}"
+      - name: Render the release cask
+        shell: bash
+        run: python3 scripts/cask.py "${GITHUB_REF_NAME#v}" build/dist/*.zip > build/kerbside.rb
+      - name: Create the Homebrew publisher token
+        id: tap
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.HOMEBREW_PUBLISHER_CLIENT_ID }}
+          private-key: ${{ secrets.HOMEBREW_PUBLISHER_PRIVATE_KEY }}
+          owner: sbekti
+          repositories: homebrew-tap
+          permission-contents: write
+          permission-pull-requests: write
+      - name: Open a tap update for review
+        env:
+          GH_TOKEN: ${{ steps.tap.outputs.token }}
+        shell: bash
+        run: |
+          gh repo clone sbekti/homebrew-tap build/tap
+          cp build/kerbside.rb build/tap/Casks/kerbside.rb
+          cd build/tap
+          git config user.name 'Kerbside release'
+          git config user.email 'kerbside@users.noreply.github.com'
+          branch="kerbside-${GITHUB_REF_NAME}"
+          git switch -c "$branch"
+          git add Casks/kerbside.rb
+          git commit -m "chore: update kerbside to ${GITHUB_REF_NAME}"
+          gh auth setup-git
+          git push origin "$branch"
+          gh pr create --repo sbekti/homebrew-tap --base main --head "$branch" \
+            --title "Update Kerbside to ${GITHUB_REF_NAME}" \
+            --body 'Review and publish the matching Kerbside draft release before merging this cask. Validate password sync and FileVault on Golden Gate first.'
